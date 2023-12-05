@@ -30,22 +30,21 @@ struct Map {
     entries: Vec<MapEntry>,
 }
 
-fn read_lines_from_file(filename: &str) -> Vec<String> {
-    let file = File::open(filename).unwrap();
-    let content = BufReader::new(file);
-    let lines: Vec<String> = content
-        .lines()
-        .map(|line| line.expect("Something went wrong"))
-        .collect();
-    lines
-}
-
 fn process(filename: &str) -> (Vec<usize>, Vec<Map>) {
     let input = read_lines_from_file(filename);
     let (_, seeds) = input[0].split_once(": ").unwrap();
     let seeds: Vec<&str> = seeds.split_whitespace().collect();
     let seeds: Vec<usize> = seeds.iter().map(|n| n.parse::<usize>().unwrap()).collect();
-
+    let mut i = 0;
+    let mut new_seeds = Vec::new();
+    while i < seeds.len() {
+        let st = seeds[i];
+        let end = seeds[i+1];
+        for idx in st..st+end {
+            new_seeds.push(idx);
+        }
+        i += 2;
+    }
     let mut maps = Vec::new();
     maps.resize(7, Map::default());
     let mut i_map = 0;
@@ -64,7 +63,17 @@ fn process(filename: &str) -> (Vec<usize>, Vec<Map>) {
         read_tokens(&line, i_map, &mut maps);
     }
 
-    return (seeds, maps);
+    return (new_seeds, maps);
+}
+
+fn read_lines_from_file(filename: &str) -> Vec<String> {
+    let file = File::open(filename).unwrap();
+    let content = BufReader::new(file);
+    let lines: Vec<String> = content
+        .lines()
+        .map(|line| line.expect("Something went wrong"))
+        .collect();
+    lines
 }
 
 fn read_tokens(line: &str, i_map: usize, maps: &mut Vec<Map>) {
@@ -79,18 +88,3 @@ fn read_tokens(line: &str, i_map: usize, maps: &mut Vec<Map>) {
         length: tokens[2],
     });
 }
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//
-//     #[test]
-//     fn it_works() {
-//         let res = process(
-//             "1abc2
-// pqr3stu8vwx
-// a1b2c3d4e5f
-// treb7uchet",
-//         );
-//         assert_eq!(res, 142);
-//     }
-// }
