@@ -1,90 +1,144 @@
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-fn main() {
-    let (seeds, maps) = process("./input.txt");
-    let mut min_location = usize::MAX;
+use std::cmp;
+use std::collections::VecDeque;
 
-    for mut location in seeds {
-        for map in &maps {
-            for entry in &map.entries {
-                if entry.source <= location && location < entry.source + entry.length {
-                    location = entry.destination + location - entry.source;
-                    break;
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct Interval {
+    first: i64,
+    last: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct Mapping {
+    source: i64,
+    destination: i64,
+    length: i64,
+}
+
+struct Conversion {
+    mappings: Vec<Mapping>,
+}
+
+fn build_map(lineptr: &mut std::str::Lines) -> Conversion {
+    let mut conversion_map: Conversion = Conversion { mappings: vec![] };
+    lineptr.next();
+    for line in lineptr.by_ref() {
+        if line.is_empty() {
+            break;
+        } else {
+            let values: Vec<i64> = line
+                .split_whitespace()
+                .map(|s| s.parse::<i64>().unwrap())
+                .collect();
+            conversion_map.mappings.push(Mapping {
+                source: values[1],
+                destination: values[0],
+                length: values[2],
+            });
+        }
+    }
+    conversion_map
+}
+
+fn process(contents: &str) -> i64 {
+    let mut lineptr = contents.lines();
+    let mut lowest: i64 = i64::MAX;
+    let seeds: Vec<i64> = lineptr
+        .next()
+        .unwrap()
+        .split_once(':')
+        .unwrap()
+        .1
+        .split_whitespace()
+        .map(|s| s.parse::<i64>().unwrap())
+        .collect();
+
+    lineptr.next().expect("unexpected EOF");
+
+    let mut conversions: Vec<Conversion> = vec![];
+    for _ in 0..7 {
+        conversions.push(build_map(&mut lineptr));
+    }
+
+    for i in (0..seeds.len()).step_by(2) {
+        let first: i64 = seeds[i];
+        let length: i64 = seeds[i + 1];
+        let mut ranges: VecDeque<Interval> = VecDeque::from([Interval {
+            first,
+            last: first + length - 1,
+        }]);
+        for conversion in conversions.iter() {
+            let mut new_ranges: Vec<Interval> = vec![];
+            while !ranges.is_empty() {
+                let range: Interval = ranges.pop_front().unwrap();
+                let mut found: bool = false;
+                for mapping in conversion.mappings.iter() {
+                    if range.first >= mapping.source && range.last < mapping.source + mapping.length
+                    {
+                        new_ranges.push(Interval {
+                            first: range.first - mapping.source + mapping.destination,
+                            last: range.last - mapping.source + mapping.destination,
+                        });
+                        found = true;
+                    } else if range.first < mapping.source
+                        && range.last >= mapping.source
+                        && range.last < mapping.source + mapping.length
+                    {
+                        ranges.push_back(Interval {
+                            first: range.first,
+                            last: mapping.source - 1,
+                        });
+                        new_ranges.push(Interval {
+                            first: mapping.destination,
+                            last: mapping.destination + range.last - mapping.source,
+                        });
+                        found = true;
+                    } else if range.first < mapping.source + mapping.length
+                        && range.last >= mapping.source + mapping.length
+                        && range.first >= mapping.source
+                    {
+                        ranges.push_back(Interval {
+                            first: mapping.source + mapping.length,
+                            last: range.last,
+                        });
+                        new_ranges.push(Interval {
+                            first: mapping.destination + range.first - mapping.source,
+                            last: mapping.destination + mapping.length - 1,
+                        });
+                        found = true;
+                    } else if range.first < mapping.source
+                        && range.last >= mapping.source + mapping.length
+                    {
+                        ranges.push_back(Interval {
+                            first: range.first,
+                            last: mapping.source - 1,
+                        });
+                        new_ranges.push(Interval {
+                            first: mapping.destination,
+                            last: mapping.destination + mapping.length - 1,
+                        });
+                        ranges.push_back(Interval {
+                            first: mapping.source + mapping.length,
+                            last: range.last,
+                        });
+                        found = true;
+                    }
+                    if found {
+                        break;
+                    }
+                }
+                if !found {
+                    new_ranges.push(range);
                 }
             }
+            ranges = VecDeque::from(new_ranges);
         }
-        min_location = min_location.min(location);
+        lowest = cmp::min(lowest, ranges.iter().min_by_key(|r| r.first).unwrap().first);
     }
-    dbg!(min_location);
+    lowest
 }
 
-#[derive(Clone)]
-struct MapEntry {
-    destination: usize,
-    source: usize,
-    length: usize,
-}
-
-#[derive(Default, Clone)]
-struct Map {
-    entries: Vec<MapEntry>,
-}
-
-fn process(filename: &str) -> (Vec<usize>, Vec<Map>) {
-    let input = read_lines_from_file(filename);
-    let (_, seeds) = input[0].split_once(": ").unwrap();
-    let seeds: Vec<&str> = seeds.split_whitespace().collect();
-    let seeds: Vec<usize> = seeds.iter().map(|n| n.parse::<usize>().unwrap()).collect();
-    let mut i = 0;
-    let mut new_seeds = Vec::new();
-    while i < seeds.len() {
-        let st = seeds[i];
-        let end = seeds[i+1];
-        for idx in st..st+end {
-            new_seeds.push(idx);
-        }
-        i += 2;
-    }
-    let mut maps = Vec::new();
-    maps.resize(7, Map::default());
-    let mut i_map = 0;
-
-    for i in 2..input.len() {
-        let line = &input[i];
-        if line.is_empty() {
-            i_map += 1;
-            continue;
-        }
-
-        if !line.chars().nth(0).unwrap().is_digit(10) {
-            continue;
-        }
-
-        read_tokens(&line, i_map, &mut maps);
-    }
-
-    return (new_seeds, maps);
-}
-
-fn read_lines_from_file(filename: &str) -> Vec<String> {
-    let file = File::open(filename).unwrap();
-    let content = BufReader::new(file);
-    let lines: Vec<String> = content
-        .lines()
-        .map(|line| line.expect("Something went wrong"))
-        .collect();
-    lines
-}
-
-fn read_tokens(line: &str, i_map: usize, maps: &mut Vec<Map>) {
-    let tokens: Vec<&str> = line.split_whitespace().collect();
-    let tokens: Vec<usize> = tokens
-        .into_iter()
-        .map(|n| n.parse::<usize>().unwrap())
-        .collect();
-    maps[i_map].entries.push(MapEntry {
-        destination: tokens[0],
-        source: tokens[1],
-        length: tokens[2],
-    });
+fn main() {
+    let contents = include_str!("./input.txt");
+    let result = process(&contents);
+    println!("result = {result}");
 }
